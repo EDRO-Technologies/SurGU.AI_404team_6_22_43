@@ -1,0 +1,123 @@
+# ГЛАВНЫЙ docker-compose.yml, заменяет все остальные
+# Запускает front, back, back-ai и все базы
+services:
+  # 1. Фронтенд-сервис (Nginx + React)
+  frontend:
+    container_name: knowledgebot_frontend
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - knowledgebot_net
+
+  # 2. Бэкенд-сервис (FastAPI - БЕЗ AI)
+  backend:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: knowledgebot_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./back/app:/app/app
+      - file_storage:/app/storage # Том для файлов (RW)
+    env_file:
+      - ./back/.env # Использует .env бэкенда
+    depends_on:
+      postgres:
+        condition: service_healthy
+      back-ai: # (НОВОЕ) Ждем запуска AI-сервиса
+        condition: service_started
+    networks:
+      - knowledgebot_net
+    # (УДАЛЕНО) GPU больше не нужен
+
+  # 3. (НОВЫЙ) AI-сервис (FastAPI - С AI-моделями)
+  back-ai:
+    container_name: knowledgebot_ai_service
+    build:
+      context: ./back-ai # Новая папка
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001" # Открываем порт 8001
+    volumes:
+      - file_storage:/app/storage:ro # Тот же том (Read-Only)
+    env_file:
+      - ./back-ai/.env # Свой .env
+    depends_on:
+      chroma:
+        condition: service_started
+      ollama:
+        condition: service_started
+    networks:
+      - knowledgebot_net
+    # (ПЕРЕНЕСЕНО) Этот сервис получает GPU для Embeddings (e.g., RTX 3060)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  # 4. База данных (PostgreSQL)
+  postgres:
+    image: postgres:15-alpine
+    container_name: knowledgebot_postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - ./back/.env # Использует .env бэкенда
+    ports:
+      - "5432:5432"
+    networks:
+      - knowledgebot_net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 5. Векторная база данных (ChromaDB)
+  chroma:
+    image: chromadb/chroma
+    container_name: knowledgebot_chroma
+    volumes:
+      - chroma_data:/chroma/.chroma/index
+    ports:
+      - "8002:8000" # 8001 занят
+    networks:
+      - knowledgebot_net
+
+  # 6. Сервис LLM (Ollama)
+  ollama:
+    image: ollama/ollama
+    container_name: knowledgebot_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - knowledgebot_net
+    # (ОСТАЕТСЯ) Этот сервис получает GPU для LLM (e.g., RTX 3090)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+networks:
+  knowledgebot_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  chroma_data:
+  ollama_data:
+  file_storage: # Общий том

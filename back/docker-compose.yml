@@ -1,0 +1,91 @@
+
+# Этот docker-compose файл запускает весь бэкенд-стек KnowledgeBot
+# Он должен быть запущен на вашем Ubuntu сервере с установленным NVIDIA Container Toolkit
+
+services:
+  # 1. Бэкенд-сервис (FastAPI)
+  # Привязан к RTX 3060 (device '1') для задач RAG (embeddings)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: knowledgebot_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app # Монтируем код для live-reload
+      - file_storage:/app/storage # Том для хранения загруженных файлов
+    env_file:
+      - .env # Файл с секретами и конфигурацией
+    depends_on:
+      - postgres
+      - chroma
+      - ollama
+    networks:
+      - knowledgebot_net
+    # Развертывание и привязка к GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # ПРЕДПОЛОЖЕНИЕ: '1' - это RTX 3060. Проверьте 'nvidia-smi'
+              capabilities: [gpu]
+
+  # 2. База данных (PostgreSQL)
+  # Хранит метаданные: пользователей, воркспейсы, историю чатов, тикеты
+  postgres:
+    image: postgres:15-alpine
+    container_name: knowledgebot_postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    ports:
+      - "5432:5432" # Открываем порт для отладки, в production можно закрыть
+    networks:
+      - knowledgebot_net
+
+  # 3. Векторная база данных (ChromaDB)
+  # Хранит векторы (embeddings) для RAG-поиска
+  chroma:
+    image: chromadb/chroma
+    container_name: knowledgebot_chroma
+    volumes:
+      - chroma_data:/chroma/.chroma/index
+    ports:
+      - "8001:8000" # Используем порт 8001 на хосте, т.к. 8000 занят FastAPI
+    networks:
+      - knowledgebot_net
+
+  # 4. Сервис LLM (Ollama)
+  # Привязан к RTX 3090 (device '0') для генерации ответов
+  ollama:
+    image: ollama/ollama
+    container_name: knowledgebot_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - knowledgebot_net
+    # Развертывание и привязка к GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0'] # ПРЕДПОЛОЖЕНИЕ: '0' - это RTX 3090. Проверьте 'nvidia-smi'
+              capabilities: [gpu]
+
+# Сеть для взаимодействия контейнеров
+networks:
+  knowledgebot_net:
+    driver: bridge
+
+# Тома для персистентного хранения данных
+volumes:
+  postgres_data:
+  chroma_data:
+  ollama_data:
+  file_storage:

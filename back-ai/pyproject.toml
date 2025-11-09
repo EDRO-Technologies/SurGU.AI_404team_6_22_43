@@ -1,0 +1,32 @@
+# (НОВЫЙ ФАЙЛ)
+[tool.poetry]
+name = "knowledgebot-ai-service"
+version = "0.1.0"
+description = "AI/RAG microservice for KnowledgeBot"
+authors = ["404team"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Web Framework
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.30.1"}
+pydantic-settings = "^2.3.4"
+
+# RAG / AI (Скопировано из 'back' v1)
+chromadb-client = "^0.5.3"
+httpx = "^0.27.0"             # Для async запросов к Ollama
+sentence-transformers = "^3.0.1"
+langchain = "^0.2.7"
+langchain-community = "^0.2.7"
+pypdf2 = "^3.0.1"
+python-docx = "^1.1.2"
+# torch - уже установлен в Dockerfile
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+pytest-asyncio = "^0.23.7"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,11 @@
+/* Импорт базовых стилей Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Простые стили для улучшения UI */
+@layer base {
+  body {
+    @apply font-sans antialiased text-gray-900;
+  }
+}
